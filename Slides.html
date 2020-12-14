@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="" xml:lang="">
+  <head>
+    <title>Staggered Difference-in-Differences in Corporate Research</title>
+    <meta charset="utf-8" />
+    <meta name="author" content="Andrew C. Baker, David. F. Larcker, and Charles C.Y. Wang" />
+    <link href="libs/remark-css-0.0.1/default.css" rel="stylesheet" />
+    <link href="libs/remark-css-0.0.1/default-fonts.css" rel="stylesheet" />
+    <script src="libs/kePrint-0.0.1/kePrint.js"></script>
+  </head>
+  <body>
+    <textarea id="source">
+class: center, middle, inverse, title-slide
+
+# Staggered Difference-in-Differences in Corporate Research
+## Methodological Challenges and a Path Forward
+### Andrew C. Baker, David. F. Larcker, and Charles C.Y. Wang
+### Stanford GSB and Harvard HBS
+### Law and Economics Virtual Seminar <br/> December 16, 2020
+
+---
+
+
+&lt;style type="text/css"&gt;
+@media print {
+  .has-continuation {
+    display: block !important;
+  }
+}
+&lt;/style&gt;
+
+
+
+# .center.pull[Outline of Talk]
+
+`\(\hspace{2cm}\)`
+
+1. Basics of Difference-in-Differences
+
+2. Regression Difference-in-Differences
+
+3. Problems with Staggered Difference-in-Differences
+
+4. Simulation Results
+
+5. New Difference-in-Differences Methods
+
+6. Banking Law Application
+
+---
+
+# .center.pull[Difference-in-Differences]
+
+`\(\hspace{2cm}\)`
+
+- Observational analog to an RCT with multiple time periods of observation.
+
+`\(\hspace{2cm}\)`
+
+- 2 units and 2 time periods.
+
+`\(\hspace{2cm}\)`
+
+- 1 unit (T) is treated, and receives treatment in the second period. The control unit (C) is never treated. 
+
+---
+# .center.pull[COVID-19 and Scented Candles]
+
+
+&lt;img src="Slides_files/figure-html/unnamed-chunk-3-1.png" width="936" style="display: block; margin: auto;" /&gt;
+
+---
+# .center.pull[COVID-19 and Scented Candles]
+
+&lt;img src="Slides_files/figure-html/unnamed-chunk-4-1.png" width="936" style="display: block; margin: auto;" /&gt;
+
+---
+
+# .center.pull[2x2 Difference-in-Differences]
+
+- Building upon `\(\color{blue}{\text{Angrist &amp; Pischke (2008, p. 228)}}\)` we can think of these simple 2x2 DiDs as a fixed effects estimator.
+
+- Potential Outcomes 
+  - `\(Y_{i, t}^1\)` = value of dependent variable for unit `\(i\)` in period `\(t\)` with treatment.
+  - `\(Y_{i, t}^0\)` = value of dependent variable for unit `\(i\)` in period `\(t\)` without treatment.
+  
+- The expected outcome is a *linear function* of unit and time fixed effects:
+`$$E[{Y_{i, t}^0}] =\alpha_i + \alpha_t$$`
+`$$E[{Y_{i, t}^1}] =\alpha_i + \alpha_t + \delta D_{st}$$`
+- Goal of DiD is to get an unbiased estimate of the treatment effect `\(\delta\)`.
+
+---
+# .center.pull[Difference-in-Differences as Solving System of Equations for Unknown Variable]
+
+- Difference in expectations for the *control* unit times t = 1 and t = 0:
+`$$\begin{align*} E[Y_{C, 1}^0] &amp; = \alpha_1 + \alpha_C \\ E[Y_{C, 0}^0] &amp; = \alpha_0 + \alpha_C  \\ E[Y_{C, 1}^0] - E[Y_{C, 0}^0] &amp; = \alpha_1 - \alpha_0 \end{align*}$$`
+ 
+- Now do the same thing for the *treated* unit:
+   `$$\begin{align*} E[Y_{T, 1}^1] &amp; = \alpha_1 + \alpha_T + \delta \\ E[Y_{T, 0}^1] &amp; = \alpha_0 + \alpha_T  \\ E[Y_{T, 1}^1] - E[Y_{T, 0}^1] &amp; = \alpha_1 - \alpha_0 + \delta \end{align*}$$`
+- If we assume the linear structure of DiD, then unbiased estimate of `\(\delta\)` is:
+
+`$$\delta=
+    \begin{align*} &amp; \left( E[Y_{T, 1}^1] - E[Y_{T, 0}^1] \right) - \left( E[Y_{C, 1}^0] - E[Y_{C, 0}^0] \right) \end{align*}$$`
+
+---
+
+# .center.pull[Two-Way Differencing]
+
+&lt;img src="Slides_files/figure-html/unnamed-chunk-5-1.gif" style="display: block; margin: auto;" /&gt;
+
+---
+# .center.pull[Regression DiD]
+  
+The DiD can be estimated through linear regression of the form:
+  
+`$$\tag{1} y_{it} = \alpha + \beta_1 TREAT_i + \beta_2 POST_t + \delta (TREAT_i \cdot POST_t) + \epsilon_{it}$$`
+    
+The coefficients from the regression estimate in (1) recover the same parameters as the double-differencing performed above:
+`$$\begin{align*} 
+\alpha &amp;= E[y_{it} | i = C, t = 0] = \alpha_0 + \alpha_C \\
+\beta_1 &amp;= E[y_{it} | i = T, t = 0] - E[y_{it} | i = C, t= 0] \\ 
+&amp;= (\alpha_0 + \alpha_T) - (\alpha_0 + \alpha_C) = \alpha_T - \alpha_C \\
+\beta_2 &amp;= E[y_{it} | i = C, t = 1] - E[y_{it} | i = C, t = 0] \\ 
+&amp;= (\alpha_1 + \alpha_C) - (\alpha_0 + \alpha_C) = \alpha_1 - \alpha_0 \\
+\delta &amp;= \left(E[y_{it} | i = T, t = 1] - E[y_{it} | i = T, t = 0] \right) - \\
+&amp;\hspace{.5cm} \left(E[y_{it} | i = C, t = 1] - E[y_{it} | i = C t = 0] \right) = \delta
+\end{align*}$$`
+    
+---
+
+# .center.pull[Regression DiD - The Workhorse Model]
+
+- Advantage of regression DiD - it provides both estimates of `\(\delta\)` and standard errors for the estimates.
+
+- `\(\color{blue}{\text{Angrist &amp; Pischke (2008)}}\)`:
+  - "It's also easy to add additional (units) or periods to the regression setup... [and] it's easy to add additional covariates."
+
+- Two-way fixed effects estimator:
+`$$y_{it} = \alpha_i + \alpha_t + \delta^{DD} D_{it} + \epsilon_{it}$$`
+  
+  - `\(\alpha_i\)` and `\(\alpha_t\)` are unit and time fixed effects, `\(D_{it}\)` is the unit-time indicator for treatment.
+
+  - `\(TREAT_i\)` and `\(POST_t\)` now subsumed by the fixed effects.
+
+  - can be modified to include covariate matrix `\(X_{it}\)`, time trends, dynamic treatment effects estimation, etc. 
+    
+---
+# .center.pull[COVID-19 and Scented Candles]
+
+
+&lt;img src="Slides_files/figure-html/unnamed-chunk-6-1.png" width="936" style="display: block; margin: auto;" /&gt;
+
+---
+# .center.pull[Regression DiD and Covid Candles]
+
+- Let's apply the 2WFE DiD to the candle example:
+
+--
+
+- Our estimating model:
+
+`$$R_{it} = \alpha_i + \alpha_t + \delta^{DD} D_{it} + \epsilon_{it}$$`
+
+where:
+
+- `\(R_{it}\)` is the rating within month `\(t\)` for candle type `\(i\)`. There are six types `\(i\)`, three scented and three unscented.
+
+- `\(\alpha_i\)` are fixed effects for each type.
+
+- `\(\alpha_t\)` are month-year fixed effects. 
+
+- `\(D_{it}\)` is an indicator equal to 1 for the scented candle brands after Covid.
+
+---
+# .center.pull[Regression DiD and Covid Candles]
+
+`\(\hspace{2cm}\)`
+
+&lt;table class="table" style="margin-left: auto; margin-right: auto;"&gt;
+ &lt;thead&gt;
+&lt;tr&gt;&lt;th style="border-bottom:hidden; padding-bottom:0; padding-left:3px;padding-right:3px;text-align: center; " colspan="3"&gt;&lt;div style="border-bottom: 1px solid #ddd; padding-bottom: 5px; "&gt;TWFE DiD Estimate&lt;/div&gt;&lt;/th&gt;&lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;th style="text-align:center;"&gt;   &lt;/th&gt;
+   &lt;th style="text-align:center;"&gt;   &lt;/th&gt;
+   &lt;th style="text-align:center;"&gt;   &lt;/th&gt;
+  &lt;/tr&gt;
+ &lt;/thead&gt;
+&lt;tbody&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:center;"&gt; Post-Covid * Scented Candle &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; \(\hat{\delta}\) &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; -0.228 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:center;"&gt;  &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; \(\sigma \) &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 0.057 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:center;"&gt;  &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; t &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; -3.971 &lt;/td&gt;
+  &lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+---
+# .center.pull[Where It Goes Wrong]
+
+- Developed literature now on the issues with TWFE DiD with "staggered treatment timing" &lt;span style="color:blue"&gt; (Abraham and Sun (2018), Borusyak and Jaravel (2018), Callaway and Sant'Anna (2019), Goodman-Bacon (2019), Strezhnev (2018), Athey and Imbens (2018))&lt;span&gt;
+
+  - Different units receive treatment at different periods in time.
+
+--
+
+- Probably the most common use of DiD today. If done right can increase amount of cross-sectional variation.
+
+--
+- Without digging too far into the literature: 
+  
+  - `\(\delta^{DD}\)` with staggered treatment timing is a *weighted average of many different treatment effects*. 
+  
+  - We know little about how it measures when treatment timing varies, how it compares means across groups, or why different specifications change estimates.
+  
+  - The weights are often negative and non-intuitive.
+  
+---
+
+# .center.pull[Staggered DiD in Accounting]
+
+&lt;table class="table table-striped" style="margin-left: auto; margin-right: auto;"&gt;
+ &lt;thead&gt;
+  &lt;tr&gt;
+   &lt;th style="text-align:center;"&gt; Journal &lt;/th&gt;
+   &lt;th style="text-align:center;"&gt; DiD &lt;/th&gt;
+   &lt;th style="text-align:center;"&gt; Staggered &lt;/th&gt;
+   &lt;th style="text-align:center;"&gt; Staggered Percentage &lt;/th&gt;
+  &lt;/tr&gt;
+ &lt;/thead&gt;
+&lt;tbody&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:center;"&gt; JAR &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 52 &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 21 &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 40.38% &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:center;"&gt; JAE &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 63 &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 34 &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 53.97% &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:center;"&gt; TAR &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 108 &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 52 &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 48.15% &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:center;"&gt; RAST &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 46 &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 24 &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 52.17% &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:center;"&gt; CAR &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 43 &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 17 &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 39.53% &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr grouplength="2"&gt;&lt;td colspan="4" style="border-bottom: 1px solid;"&gt;&lt;strong&gt;Combined&lt;/strong&gt;&lt;/td&gt;&lt;/tr&gt;
+&lt;tr&gt;
+   &lt;td style="text-align:center; padding-left: 2em;" indentlevel="1"&gt; Top 3 &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 223 &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 107 &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 47.98% &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:center; padding-left: 2em;" indentlevel="1"&gt; Total &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 312 &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 148 &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 47.44% &lt;/td&gt;
+  &lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+
+---
+
+# .center.pull[Bias with TWFE - Goodman-Bacon (2019)]
+
+- Important Insights
+
+  - `\(\delta^{DD}\)` is just the weighted average of all the 2x2 sub-group comparison treatment effects. The weights are a function of the size of the subsample, relative size of treatment and control units, and the timing of treatment in the sub sample.
+
+  - **Already-treated units act as controls even though they are treated.**
+
+  - Given the weighting function, panel length alone can change the DiD estimates substantially, even when each `\(\delta^{DD}\)` does not change.
+
+  - Groups treated closer to middle of panel receive higher weights than those treated earlier or later.
+
+---
+
+# .center.pull[Bias with TWFE - Goodman-Bacon (2019)]
+
+Main Decomposition:
+
+`$$\underset{N \rightarrow \infty}{\text{plim }} \hat{\delta}^{DD} = \color{green}{VWATT} + \color{blue}{VWCT} -\color{red}{\Delta ATT}$$`
+
+--
+`\(\hspace{2cm}\)`
+
+- `\(\color{green}{VWATT}\)` = variance-weighted average treatment effect on the treated.
+
+--
+
+`\(\hspace{2cm}\)`
+- `\(\color{blue}{VWCT}\)` = variance-weighted common trend. 
+
+--
+
+`\(\hspace{2cm}\)`
+- `\(\color{red}{\Delta ATT}\)` = weighted sum of the *change* in treatment effects within each unit's post-period with respect to another unit's treatment timing.
+
+---
+# .center.pull[Simulation Exercise]
+
+- Can show how easily `\(\delta^{DD}\)` goes awry up through a simulation exercise.
+
+--
+
+- Assume we're modeling outcome variable `\(y_{it}\)` on balanced panel with `\(T = 36\)` years from 1980 to 2015 with 1000 firms `\(i\)`.
+
+--
+
+- Time-invariant unit effects and time-varying year effects drawn from `\(\sim N \left(0, \frac{1}{2}^2\right)\)`.
+
+--
+
+- Firms are incorporated in of 50 randomly drawn states, and states are randomly assigned into three treatment groups `\(G_g \in \{1989, 1998, 2006\}\)`.
+
+---
+
+# .center.pull[Simulation Exercise]
+
+`\(\hspace{0.5cm}\)`
+
+**Model the treatment effect process in three ways:**
+
+--
+
+1) Only one treatment period (1998) and one treated group, with constant additive treatment effects.
+  
+--
+
+2) Allow for staggered treatment timing but with constant additive effects. Simulated treatment effects `\(\tau\)` are all positive in expectation but decrease over time  `\(\left( \tau_{G1989} = 5, \tau_{G1998} = 3, \tau_{G2007} = 1 \right)\)`.
+
+--
+
+3) Allow for both staggered treatment timing and change-in-trend "dynamic" treatment effects. Instead of a constant `\(\tau\)` for each group, `\(\tau_i\)` is the yearly increase in outcome variable that compounds over time. Here `\(\tau_{i, G1989} = 0.5, \tau_{i, G1998} = 0.3,\)` and `\(\tau_{i, G2007} = 0.1\)`.
+
+---
+# .center.pull[Simulation Exercise]
+
+&lt;img src="Slides_files/figure-html/unnamed-chunk-9-1.png" width="1008" style="display: block; margin: auto;" /&gt;
+
+---
+# .center.pull[Simulation Exercise]
+
+`\(\hspace{0.5cm}\)`
+
+- With the simulated data we estimate TWFE DiD using MLE on:
+
+`$$y_{it} = \alpha_i + \alpha_t + \delta^{DD}D_{it} + \epsilon_{it}$$`
+
+`\(\hspace{0.5cm}\)`
+
+- Simple regression model with unit and time fixed effects.
+
+`\(\hspace{0.5cm}\)`
+
+- For each of the three simulated datasets we run a Monte Carlo simulation where we create the datasets 1,000 times and plot the distribution of `\(\widehat{\delta^{DD}}\)`.
+
+`\(\hspace{0.5cm}\)`
+
+- Bias is deviation from true underlying treatment effect.
+
+---
+# .center.pull[Simulation Exercise]
+
+&lt;img src="Slides_files/figure-html/unnamed-chunk-10-1.png" width="864" style="display: block; margin: auto;" /&gt;
+
+---
+# .center.pull[Goodman-Bacon Decomposition for Simulation 3]
+
+`\(\hspace{0.5cm}\)`
+
+
+&lt;iframe src="p.html" width="800" height="500" scrolling="yes" seamless="seamless" frameBorder="0"&gt; &lt;/iframe&gt;
+
+---
+
+# .center.pull[Remedies]
+
+---
+
+# .center.pull[Callaway &amp; Sant'Anna]
+
+- Inverse propensity weighted long-difference in cohort-specific average treatment effects between treated and untreated units for a given treatment cohort. 
+
+`$$\begin{equation} ATT(g, t) = \mathbb{E} \left[\left( \frac{G_g}{\mathbb{E}[G_g]} - \frac{\frac{p_g(X)C}{1 - p_g(X)}}{\mathbb{E}\left[\frac{p_g(X)C}{1 - p_g(X)} \right]} \right) \left(Y_t - T_{g - 1}\right)\right] \end{equation}$$`
+
+- Without covariates, as in the simulated example here, it calculates the simple long difference between all treated units `\(i\)` in relative year `\(k\)` with all potential control units that have not yet been treated by year `\(k\)`.
+
+---
+# .center.pull[Abraham and Sun]
+  
+- A relatively straightforward extension of the standard event-study TWFE model:
+  
+  `$$y_{it} = \alpha_i + \alpha_t + \sum_e \sum_{l \neq -1} \delta_{el}(1\{E_i = e\} \cdot D_{it}^l) + \epsilon_{it}$$`
+  
+- You saturate the relative time indicators (i.e. t = -2, -1, ...) with indicators for the treatment initiation year group, and aggregate to overall relative time indicators weighting by cohort size.
+
+- In the case of no covariates, this gives you the same estimate as Callaway &amp; Sant'Anna if you *fully saturate* the model with time indicators (leaving only two relative year identifiers missing).
+
+- The authors don't claim that it can be used with covariates, but it seemingly follows if we think it is okay with normal TWFE DiD. 
+
+---
+# .center.pull[Stacked Regression]
+  
+- Similar to the standard TWFE DiD, but we ensure that no previously treated units enter as controls by trimming the sample.
+
+- For each treatment cohort `\(G_g\)`, get all treated units, and all units that are not treated by year `\(g + k\)` where `\(g\)` is the treatment year and `\(k\)` is the outer most relative year that you want to test (e.g. if you do an event study plot from -5 to 5, `\(k\)` would equal 5).
+
+- Keep only observations within years `\(g - k\)` and `\(g + k\)` for each cohort-specific dataset, and then stack them in relative time. 
+
+- Run the same TWFE estimates as in standard DiD, but include interactions for the cohort-specific dataset with all of the fixed effects, controls, and clusters.
+
+---
+# .center.pull[Simulations - Remedies]
+
+&lt;img src="Slides_files/figure-html/unnamed-chunk-12-1.png" width="864" style="display: block; margin: auto;" /&gt;
+
+---
+# .center.pull[Replication]
+
+---
+# .center.pull[Big Bad Banks]
+
+- Beck, Thorsten, Ross Levine, and Alexey Levkov, 2010, "Big Bad Banks? The Winners and Losers from Bank Deregulation in the United States", *Journal of Finance* 65 (5).
+
+**Story:**
+
+- 1970s through the 1990s, most states removed restrictions on intrastate branching.
+
+--
+
+- Intensified bank competition and improved bank performance.
+
+--
+
+- Theoretically unclear what the distributional effects of bank deregulation would be.
+
+--
+
+- "Exploiting the cross‐state, cross‐time variation in the timing of branch deregulation, we find that deregulation materially tightened the distribution of income."
+
+---
+# .center.pull[Deregulatory Timing]
+
+&lt;img src="Slides_files/figure-html/unnamed-chunk-13-1.png" width="504" style="display: block; margin: auto;" /&gt;
+
+
+---
+# .center.pull[Baseline Model]
+
+`$$\text{Log(Gini)} = \alpha_i + \alpha_t + \delta D_{it} + \epsilon_{it}$$`
+
+where Log(Gini) is the natural log of the state level Gini coefficient from CPS, `\(\alpha_i\)` and `\(\alpha_t\)` are state and year fixed effects, and `\(D_{it}\)` is an indicator variable for years after deregulation.
+
+`\(\hspace{2cm}\)`
+
+&lt;table class="table" style="margin-left: auto; margin-right: auto;"&gt;
+&lt;caption&gt;The Impact of Deregulation on Income Inequality&lt;/caption&gt;
+ &lt;thead&gt;
+&lt;tr&gt;&lt;th style="border-bottom:hidden; padding-bottom:0; padding-left:3px;padding-right:3px;text-align: center; " colspan="2"&gt;&lt;div style="border-bottom: 1px solid #ddd; padding-bottom: 5px; "&gt;Panel A: No Controls&lt;/div&gt;&lt;/th&gt;&lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;th style="text-align:left;"&gt;   &lt;/th&gt;
+   &lt;th style="text-align:center;"&gt; Log Gini &lt;/th&gt;
+  &lt;/tr&gt;
+ &lt;/thead&gt;
+&lt;tbody&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; Bank deregulation &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; -0.022 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt;  &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; (0.007)*** &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; Adjusted R-Squared &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 0.51 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; Observations &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 1519 &lt;/td&gt;
+  &lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+---
+# .center.pull[Goodman-Bacon Decomposition]
+
+`\(\hspace{2cm}\)`
+
+&lt;table class="table" style="margin-left: auto; margin-right: auto;"&gt;
+&lt;caption&gt;Goodman-Bacon Decomposition of Table II Results&lt;/caption&gt;
+ &lt;thead&gt;
+  &lt;tr&gt;
+   &lt;th style="text-align:left;"&gt; Type &lt;/th&gt;
+   &lt;th style="text-align:center;"&gt; Weighted 
+ Average &lt;/th&gt;
+   &lt;th style="text-align:center;"&gt; Total 
+ Weight &lt;/th&gt;
+  &lt;/tr&gt;
+ &lt;/thead&gt;
+&lt;tbody&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; Earlier vs Later Treated &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 0.005 &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 0.143 &lt;/td&gt;
+  &lt;/tr&gt;
+  &lt;tr&gt;
+   &lt;td style="text-align:left;"&gt; Later vs Earlier Treated &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; -0.027 &lt;/td&gt;
+   &lt;td style="text-align:center;"&gt; 0.857 &lt;/td&gt;
+  &lt;/tr&gt;
+&lt;/tbody&gt;
+&lt;/table&gt;
+
+---
+# .center.pull[Goodman-Bacon Decomposition]
+
+&lt;img src="Slides_files/figure-html/unnamed-chunk-16-1.png" width="864" style="display: block; margin: auto;" /&gt;
+
+---
+# .center.pull[Event Study Specification]
+
+`$$\text{log(Gini)}_{it} = \alpha_i + \alpha_t + \beta_1 D_{it}^{-\overline{10}} + \beta_2 D_{it}^{-9} \ldots \beta_{25}D_{it}^{+\overline{15}} + \epsilon_{st}$$`
+&lt;img src="Slides_files/figure-html/unnamed-chunk-17-1.png" width="720" style="display: block; margin: auto;" /&gt;
+
+---
+# .center.pull[Modified Event Study Specification]
+
+&lt;img src="Slides_files/figure-html/unnamed-chunk-18-1.png" width="720" style="display: block; margin: auto;" /&gt;
+
+---
+# .center.pull[Remedies]
+
+&lt;img src="Slides_files/figure-html/unnamed-chunk-19-1.png" width="864" style="display: block; margin: auto;" /&gt;
+
+---
+# .center.pull[Conclusion]
+
+`\(\hspace{2cm}\)`
+
+- A well-known and very commonly used shock that has reasonable treatment timing dispersion. 
+
+`\(\hspace{2cm}\)`
+--
+
+- Decomposition from Goodman-Bacon shows the result is driven by problematic comparisons.
+
+`\(\hspace{2cm}\)`
+--
+
+- Once correcting for staggering and treatment effect heterogeneity - no effect.
+    </textarea>
+<style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
+<script src="https://remarkjs.com/downloads/remark-latest.min.js"></script>
+<script>var slideshow = remark.create({
+"highlightStyle": "github",
+"ratio": "16:9",
+"highlightLines": true,
+"countIncrementalSlides": false,
+"extra_dependencies": "xcolor"
+});
+if (window.HTMLWidgets) slideshow.on('afterShowSlide', function (slide) {
+  window.dispatchEvent(new Event('resize'));
+});
+(function(d) {
+  var s = d.createElement("style"), r = d.querySelector(".remark-slide-scaler");
+  if (!r) return;
+  s.type = "text/css"; s.innerHTML = "@page {size: " + r.style.width + " " + r.style.height +"; }";
+  d.head.appendChild(s);
+})(document);
+
+(function(d) {
+  var el = d.getElementsByClassName("remark-slides-area");
+  if (!el) return;
+  var slide, slides = slideshow.getSlides(), els = el[0].children;
+  for (var i = 1; i < slides.length; i++) {
+    slide = slides[i];
+    if (slide.properties.continued === "true" || slide.properties.count === "false") {
+      els[i - 1].className += ' has-continuation';
+    }
+  }
+  var s = d.createElement("style");
+  s.type = "text/css"; s.innerHTML = "@media print { .has-continuation { display: none; } }";
+  d.head.appendChild(s);
+})(document);
+// delete the temporary CSS (for displaying all slides initially) when the user
+// starts to view slides
+(function() {
+  var deleted = false;
+  slideshow.on('beforeShowSlide', function(slide) {
+    if (deleted) return;
+    var sheets = document.styleSheets, node;
+    for (var i = 0; i < sheets.length; i++) {
+      node = sheets[i].ownerNode;
+      if (node.dataset["target"] !== "print-only") continue;
+      node.parentNode.removeChild(node);
+    }
+    deleted = true;
+  });
+})();
+(function() {
+  "use strict"
+  /* Replace <script> tags in slides area to make them executable
+   *
+   * Runs after post-processing of markdown source into slides and replaces only
+   * <script>s on the last slide of continued slides using the .has-continuation
+   * class added by xaringan. Finally, any <script>s in the slides area that
+   * aren't executed are commented out.
+   */
+  var scripts = document.querySelectorAll(
+    '.remark-slides-area .remark-slide-container:not(.has-continuation) script'
+  );
+  if (!scripts.length) return;
+  for (var i = 0; i < scripts.length; i++) {
+    var s = document.createElement('script');
+    var code = document.createTextNode(scripts[i].textContent);
+    s.appendChild(code);
+    scripts[i].parentElement.replaceChild(s, scripts[i]);
+  }
+  var scriptsNotExecuted = document.querySelectorAll(
+    '.remark-slides-area .remark-slide-container.has-continuation script'
+  );
+  if (!scriptsNotExecuted.length) return;
+  for (var i = 0; i < scriptsNotExecuted.length; i++) {
+    var comment = document.createComment(scriptsNotExecuted[i].outerHTML)
+    scriptsNotExecuted[i].parentElement.replaceChild(comment, scriptsNotExecuted[i])
+  }
+})();
+(function() {
+  var links = document.getElementsByTagName('a');
+  for (var i = 0; i < links.length; i++) {
+    if (/^(https?:)?\/\//.test(links[i].getAttribute('href'))) {
+      links[i].target = '_blank';
+    }
+  }
+})();
+// adds .remark-code-has-line-highlighted class to <pre> parent elements
+// of code chunks containing highlighted lines with class .remark-code-line-highlighted
+(function(d) {
+  const hlines = d.querySelectorAll('.remark-code-line-highlighted');
+  const preParents = [];
+  const findPreParent = function(line, p = 0) {
+    if (p > 1) return null; // traverse up no further than grandparent
+    const el = line.parentElement;
+    return el.tagName === "PRE" ? el : findPreParent(el, ++p);
+  };
+
+  for (let line of hlines) {
+    let pre = findPreParent(line);
+    if (pre && !preParents.includes(pre)) preParents.push(pre);
+  }
+  preParents.forEach(p => p.classList.add("remark-code-has-line-highlighted"));
+})(document);</script>
+
+<script>
+slideshow._releaseMath = function(el) {
+  var i, text, code, codes = el.getElementsByTagName('code');
+  for (i = 0; i < codes.length;) {
+    code = codes[i];
+    if (code.parentNode.tagName !== 'PRE' && code.childElementCount === 0) {
+      text = code.textContent;
+      if (/^\\\((.|\s)+\\\)$/.test(text) || /^\\\[(.|\s)+\\\]$/.test(text) ||
+          /^\$\$(.|\s)+\$\$$/.test(text) ||
+          /^\\begin\{([^}]+)\}(.|\s)+\\end\{[^}]+\}$/.test(text)) {
+        code.outerHTML = code.innerHTML;  // remove <code></code>
+        continue;
+      }
+    }
+    i++;
+  }
+};
+slideshow._releaseMath(document);
+</script>
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+(function () {
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src  = 'https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-MML-AM_CHTML';
+  if (location.protocol !== 'file:' && /^https?:/.test(script.src))
+    script.src  = script.src.replace(/^https?:/, '');
+  document.getElementsByTagName('head')[0].appendChild(script);
+})();
+</script>
+  </body>
+</html>

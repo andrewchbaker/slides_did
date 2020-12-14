@@ -1,0 +1,1686 @@
+---
+title: "Staggered Difference-in-Differences in Corporate Research"
+subtitle: "Methodological Challenges and a Path Forward"
+author: "Andrew C. Baker, David. F. Larcker, and Charles C.Y. Wang"
+institute: "Stanford GSB and Harvard HBS"
+date: "Law and Economics Virtual Seminar <br/> December 16, 2020"
+output:
+  xaringan::moon_reader:
+    lib_dir: libs
+    nature:
+      highlightStyle: github
+      ratio: '16:9'
+      highlightLines: true
+      countIncrementalSlides: false
+      extra_dependencies: ["xcolor"]
+      
+---
+
+```{css, echo = FALSE}
+@media print {
+  .has-continuation {
+    display: block !important;
+  }
+}
+```
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.retina = 2)
+```
+```{r, message = FALSE, warning = FALSE, echo = FALSE}
+library(tidyverse)
+library(kableExtra)
+library(here)
+library(ggthemes)
+library(lfe)
+library(did)
+library(xaringan)
+library(patchwork)
+library(bacondecomp)
+library(multcomp)
+library(fastDummies)
+library(magrittr)
+library(MCPanel)
+library(gganimate)
+library(gifski)
+library(plotly)
+library(lubridate)
+library(dataverse)
+library(RCurl)
+options(knitr.kable.NA = '')
+
+select <- dplyr::select
+theme_set(theme_clean() + theme(plot.background = element_blank(),
+                                legend.background = element_blank()))
+```
+
+# .center.pull[Outline of Talk]
+
+$\hspace{2cm}$
+
+1. Basics of Difference-in-Differences
+
+2. Regression Difference-in-Differences
+
+3. Problems with Staggered Difference-in-Differences
+
+4. Simulation Results
+
+5. New Difference-in-Differences Methods
+
+6. Banking Law Application
+
+---
+
+# .center.pull[Difference-in-Differences]
+
+$\hspace{2cm}$
+
+- Observational analog to an RCT with multiple time periods of observation.
+
+$\hspace{2cm}$
+
+- 2 units and 2 time periods.
+
+$\hspace{2cm}$
+
+- 1 unit (T) is treated, and receives treatment in the second period. The control unit (C) is never treated. 
+
+---
+# .center.pull[COVID-19 and Scented Candles]
+
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE, fig.align = 'center', fig.width = 13}
+# download data
+# get file locations
+scented <- "https://github.com/kateptrv/Candles/blob/main/Scented_all.xlsx?raw=true"
+unscented <- "https://github.com/kateptrv/Candles/blob/main/Unscented_all.xlsx?raw=true"
+
+# download the scented
+temp_file <- tempfile(fileext = ".xlsx")
+download.file(url = scented, destfile = temp_file, mode = "wb", quiet = TRUE)
+candles_s <- readxl::read_xlsx(temp_file)
+
+# download unscented
+temp_file <- tempfile(fileext = ".xlsx")
+download.file(url = unscented, destfile = temp_file, mode = "wb", quiet = TRUE)
+candles_us <- readxl::read_xlsx(temp_file)
+
+# combine the data
+candles <- bind_rows(
+  candles_s %>% filter(CandleID %in% 1:3) %>% mutate(type = "Scented"),
+  candles_us %>% filter(CandleID %in% 1:3) %>% mutate(type = "Unscented"),
+) %>% 
+  # filter date to after 2017
+  filter(Date >= ymd(20170101)) %>% 
+  # make a month-year variable
+  mutate(month_year = ceiling_date(Date, "month"))
+
+# plot averages over time
+candles %>% 
+  group_by(type, month_year, CandleID) %>% 
+  summarize(Rating = mean(Rating)) %>% 
+  ggplot(aes(x = month_year, y = Rating, color = type)) + 
+  geom_point(alpha = 1/3) + 
+  geom_vline(xintercept = ymd(20191201, tz = "UTC"), linetype = "dashed", color = "black", size = 2) + 
+  geom_smooth(aes(fill = type), alpha = 1/2) + 
+  annotate("label", label = "Covid Time", x = ymd(20200401, tz = "UTC"), y = 3, size = 6) + 
+  scale_color_brewer(palette = "Set1") + 
+  ylim(c(3, 5)) + 
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.text = element_text(size = 15),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(angle = 360, hjust = 0.5, vjust = 0.5, size = 14),
+        axis.text.y = element_text(size = 12),
+        axis.text.x = element_text(size = 12))
+```
+
+---
+# .center.pull[COVID-19 and Scented Candles]
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE, fig.align = 'center', fig.width = 13}
+simple_means <- candles %>% 
+  filter(Date >= 2019) %>% 
+  mutate(period = if_else(year(Date) == 2020, 1, 0)) %>% 
+  group_by(type, period) %>% 
+  summarize(Rating = mean(Rating))
+
+
+simple_means %>% 
+  ggplot(aes(x = period, y = Rating, color = type)) + 
+  geom_point(size = 4) + 
+  geom_line(size = 2) + 
+  scale_color_brewer(palette = "Set1") + 
+  ylim(c(4, 4.8)) +
+  scale_x_continuous(breaks = c(0, 1),
+                     labels = c("Pre Covid", "Post Covid")) + 
+  labs(x = "Period", y = "Average \n Rating") + 
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.text = element_text(size = 15),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(angle = 360, hjust = 0.5, vjust = 0.5, size = 14),
+        axis.text.y = element_text(size = 12),
+        axis.text.x = element_text(size = 12))
+
+```
+
+---
+
+# .center.pull[2x2 Difference-in-Differences]
+
+- Building upon $\color{blue}{\text{Angrist & Pischke (2008, p. 228)}}$ we can think of these simple 2x2 DiDs as a fixed effects estimator.
+
+- Potential Outcomes 
+  - $Y_{i, t}^1$ = value of dependent variable for unit $i$ in period $t$ with treatment.
+  - $Y_{i, t}^0$ = value of dependent variable for unit $i$ in period $t$ without treatment.
+  
+- The expected outcome is a *linear function* of unit and time fixed effects:
+$$E[{Y_{i, t}^0}] =\alpha_i + \alpha_t$$
+$$E[{Y_{i, t}^1}] =\alpha_i + \alpha_t + \delta D_{st}$$
+- Goal of DiD is to get an unbiased estimate of the treatment effect $\delta$.
+
+---
+# .center.pull[Difference-in-Differences as Solving System of Equations for Unknown Variable]
+
+- Difference in expectations for the *control* unit times t = 1 and t = 0:
+$$\begin{align*} E[Y_{C, 1}^0] & = \alpha_1 + \alpha_C \\ E[Y_{C, 0}^0] & = \alpha_0 + \alpha_C  \\ E[Y_{C, 1}^0] - E[Y_{C, 0}^0] & = \alpha_1 - \alpha_0 \end{align*}$$
+ 
+- Now do the same thing for the *treated* unit:
+   $$\begin{align*} E[Y_{T, 1}^1] & = \alpha_1 + \alpha_T + \delta \\ E[Y_{T, 0}^1] & = \alpha_0 + \alpha_T  \\ E[Y_{T, 1}^1] - E[Y_{T, 0}^1] & = \alpha_1 - \alpha_0 + \delta \end{align*}$$
+- If we assume the linear structure of DiD, then unbiased estimate of $\delta$ is:
+
+$$\delta=
+    \begin{align*} & \left( E[Y_{T, 1}^1] - E[Y_{T, 0}^1] \right) - \left( E[Y_{C, 1}^0] - E[Y_{C, 0}^0] \right) \end{align*}$$
+
+---
+
+# .center.pull[Two-Way Differencing]
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE, fig.align = 'center', fig.width = 7, fig.height = 4}
+# get the values
+T0 <- simple_means %>% filter(period == 0 & type == "Scented") %>% pull(Rating)
+C0 <- simple_means %>% filter(period == 0 & type == "Unscented") %>% pull(Rating)
+T1 <- simple_means %>% filter(period == 1 & type == "Scented") %>% pull(Rating)
+C1 <- simple_means %>% filter(period == 1 & type == "Unscented") %>% pull(Rating)
+
+
+animate_data <- bind_rows(
+  
+  simple_means %>% 
+    mutate(Y2 = Rating) %>% 
+    mutate(state = "1. Raw Data", state2 = 1),
+  
+  simple_means %>% 
+    # remove difference - manually entering bc too lazy to get this to work
+    mutate(Y2 = Rating - (C0-T0)) %>% 
+    mutate(state = "2. Remove Baseline Differences", state2 = 2),
+  
+  simple_means %>% 
+    mutate(Y2 = Rating - (C0-T0)) %>% 
+    mutate(state = "3. Calculate Difference-in-Differences", state2 = 3)
+)
+
+first_two <- c("1. Raw Data", "2. Remove Baseline Differences")
+options(gganimate.dev_args = list(width = 1500, height = 1100))
+
+p <- animate_data %>% 
+  ggplot() + 
+  geom_line(aes(x = period, y = Rating, group = type, color = type), size = 1.5) + 
+  geom_line(data = . %>% filter(type == "Unscented"),
+            aes(x = period, y = Y2),
+            color = "#377EB8", linetype = "dashed", size = 1.5) + 
+  labs(x = "Time", y = "Outcome") + 
+  scale_x_continuous(breaks = c(1, 2)) + 
+  scale_colour_brewer(palette = 'Set1') + 
+  theme(axis.title = element_text(size = 18),
+        axis.text = element_text(size = 16),
+        legend.position = 'bottom',
+        legend.title = element_blank(),
+        legend.text = element_text(size = 16),
+        plot.title = element_text(size = 25, hjust = 0.5),
+        plot.background = element_blank()) + 
+  geom_segment(aes(x = ifelse(state2 == 2, 0, NA)),
+               xend = 0, y = C0, yend = T0, arrow = arrow(length = unit(0.1, "inches")), 
+               color = "#377EB8") + 
+  geom_segment(aes(x = ifelse(state2 == 2, 0.5, NA)),
+               xend = 0.5, y = (C0 + C1)/2, yend = (C0 + C1)/2 - (C0 - T0), 
+               arrow = arrow(length = unit(0.1, "inches")), 
+               color = "#377EB8") + 
+  geom_segment(aes(x = ifelse(state2 == 2, 1, NA)),
+               xend = 1, y = C1, yend = C1 - (C0 - T0), arrow = arrow(length = unit(0.1, "inches")), 
+               color = "#377EB8") + 
+  geom_segment(aes(x = ifelse(state2 ==3, 1, NA)),
+               xend = 1, y = C1 - (C0 - T0), yend = T1, 
+               arrow = arrow(length = unit(0.1, "inches")), color = "darkgreen") + 
+  geom_segment(aes(x = ifelse(state2 ==3, 1, NA)),
+               xend = 1, y = T1, yend = C1 - (C0 - T0), 
+               arrow = arrow(length = unit(0.1, "inches")), color = "darkgreen") + 
+  # geom_segment(aes(x = ifelse(state2 ==3, 1, NA)),
+  #              xend = 0.85, y = 5, yend = 4, 
+  #              color = "black", linetype = "dashed") + 
+  # geom_segment(aes(x = ifelse(state2 ==3, 1, NA)),
+  #              xend = 0.85, y = 3, yend = 4, 
+  #              color = "black", linetype = "dashed") + 
+  geom_label(aes(x = ifelse(state2 == 3, 0.925, NA),
+                 y = ifelse(state2 == 3, 4.08, NA)),
+             label = "Treatment \n Effect", color = "black") +
+  labs(title = '\n{next_state}') + 
+  transition_states(state, transition_length=c(6,6,6),state_length=c(20, 20, 20), wrap=FALSE)+
+  ease_aes('sine-in-out')+
+  exit_fade()+
+  enter_fade()
+
+animate(p, height = 525, width = 750)
+
+```
+
+---
+# .center.pull[Regression DiD]
+  
+The DiD can be estimated through linear regression of the form:
+  
+$$\tag{1} y_{it} = \alpha + \beta_1 TREAT_i + \beta_2 POST_t + \delta (TREAT_i \cdot POST_t) + \epsilon_{it}$$
+    
+The coefficients from the regression estimate in (1) recover the same parameters as the double-differencing performed above:
+$$\begin{align*} 
+\alpha &= E[y_{it} | i = C, t = 0] = \alpha_0 + \alpha_C \\
+\beta_1 &= E[y_{it} | i = T, t = 0] - E[y_{it} | i = C, t= 0] \\ 
+&= (\alpha_0 + \alpha_T) - (\alpha_0 + \alpha_C) = \alpha_T - \alpha_C \\
+\beta_2 &= E[y_{it} | i = C, t = 1] - E[y_{it} | i = C, t = 0] \\ 
+&= (\alpha_1 + \alpha_C) - (\alpha_0 + \alpha_C) = \alpha_1 - \alpha_0 \\
+\delta &= \left(E[y_{it} | i = T, t = 1] - E[y_{it} | i = T, t = 0] \right) - \\
+&\hspace{.5cm} \left(E[y_{it} | i = C, t = 1] - E[y_{it} | i = C t = 0] \right) = \delta
+\end{align*}$$
+    
+---
+
+# .center.pull[Regression DiD - The Workhorse Model]
+
+- Advantage of regression DiD - it provides both estimates of $\delta$ and standard errors for the estimates.
+
+- $\color{blue}{\text{Angrist & Pischke (2008)}}$:
+  - "It's also easy to add additional (units) or periods to the regression setup... [and] it's easy to add additional covariates."
+
+- Two-way fixed effects estimator:
+$$y_{it} = \alpha_i + \alpha_t + \delta^{DD} D_{it} + \epsilon_{it}$$
+  
+  - $\alpha_i$ and $\alpha_t$ are unit and time fixed effects, $D_{it}$ is the unit-time indicator for treatment.
+
+  - $TREAT_i$ and $POST_t$ now subsumed by the fixed effects.
+
+  - can be modified to include covariate matrix $X_{it}$, time trends, dynamic treatment effects estimation, etc. 
+    
+---
+# .center.pull[COVID-19 and Scented Candles]
+
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE, fig.align = 'center', fig.width = 13}
+# download data
+# get file locations
+scented <- "https://github.com/kateptrv/Candles/blob/main/Scented_all.xlsx?raw=true"
+unscented <- "https://github.com/kateptrv/Candles/blob/main/Unscented_all.xlsx?raw=true"
+
+# download the scented
+temp_file <- tempfile(fileext = ".xlsx")
+download.file(url = scented, destfile = temp_file, mode = "wb", quiet = TRUE)
+candles_s <- readxl::read_xlsx(temp_file)
+
+# download unscented
+temp_file <- tempfile(fileext = ".xlsx")
+download.file(url = unscented, destfile = temp_file, mode = "wb", quiet = TRUE)
+candles_us <- readxl::read_xlsx(temp_file)
+
+# combine the data
+candles <- bind_rows(
+  candles_s %>% filter(CandleID %in% 1:3) %>% mutate(type = "Scented"),
+  candles_us %>% filter(CandleID %in% 1:3) %>% mutate(type = "Unscented"),
+) %>% 
+  # filter date to after 2017
+  filter(Date >= ymd(20170101)) %>% 
+  # make a month-year variable
+  mutate(month_year = ceiling_date(Date, "month"))
+
+# plot averages over time
+candles %>% 
+  group_by(type, month_year, CandleID) %>% 
+  summarize(Rating = mean(Rating)) %>% 
+  ggplot(aes(x = month_year, y = Rating, color = type)) + 
+  geom_point(alpha = 1/3) + 
+  geom_vline(xintercept = ymd(20191201, tz = "UTC"), linetype = "dashed", color = "black", size = 2) + 
+  geom_smooth(aes(fill = type), alpha = 1/2) + 
+  annotate("label", label = "Covid Time", x = ymd(20200401, tz = "UTC"), y = 3, size = 6) + 
+  scale_color_brewer(palette = "Set1") + 
+  ylim(c(3, 5)) + 
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.text = element_text(size = 15),
+        axis.title.x = element_blank(),
+        axis.title.y = element_text(angle = 360, hjust = 0.5, vjust = 0.5, size = 14),
+        axis.text.y = element_text(size = 12),
+        axis.text.x = element_text(size = 12))
+```
+
+---
+# .center.pull[Regression DiD and Covid Candles]
+
+- Let's apply the 2WFE DiD to the candle example:
+
+--
+
+- Our estimating model:
+
+$$R_{it} = \alpha_i + \alpha_t + \delta^{DD} D_{it} + \epsilon_{it}$$
+
+where:
+
+- $R_{it}$ is the rating within month $t$ for candle type $i$. There are six types $i$, three scented and three unscented.
+
+- $\alpha_i$ are fixed effects for each type.
+
+- $\alpha_t$ are month-year fixed effects. 
+
+- $D_{it}$ is an indicator equal to 1 for the scented candle brands after Covid.
+
+---
+# .center.pull[Regression DiD and Covid Candles]
+
+$\hspace{2cm}$
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE, fig.align = 'center', fig.width = 13}
+broom::tidy(felm(Rating ~ D | month_year + as.factor(CandleID):as.factor(type) | 0 | 0,
+                 data = candles %>% mutate(D = if_else(year(Date) == 2020 & type == "Scented", 1, 0)))) %>% 
+  mutate(variable = "Post-Covid * Scented Candle") %>% 
+  select(variable, estimate, std.error, statistic) %>% 
+  pivot_longer(cols = c(estimate, std.error, statistic),
+               names_to = "type", values_to = "value") %>% 
+  mutate(variable = if_else(type != "estimate", "", variable),
+         type = c("\\(\\hat{\\delta}\\)", "\\(\\sigma \\)", "t")) %>% 
+  kable(format = "html", booktabs = T, escape = FALSE, align = "c",
+        digits = 3,
+        col.names = c(" ", " ", " ")) %>% 
+  kable_styling() %>% 
+  add_header_above(c("TWFE DiD Estimate" = 3))
+```
+
+---
+# .center.pull[Where It Goes Wrong]
+
+- Developed literature now on the issues with TWFE DiD with "staggered treatment timing" <span style="color:blue"> (Abraham and Sun (2018), Borusyak and Jaravel (2018), Callaway and Sant'Anna (2019), Goodman-Bacon (2019), Strezhnev (2018), Athey and Imbens (2018))<span>
+
+  - Different units receive treatment at different periods in time.
+
+--
+
+- Probably the most common use of DiD today. If done right can increase amount of cross-sectional variation.
+
+--
+- Without digging too far into the literature: 
+  
+  - $\delta^{DD}$ with staggered treatment timing is a *weighted average of many different treatment effects*. 
+  
+  - We know little about how it measures when treatment timing varies, how it compares means across groups, or why different specifications change estimates.
+  
+  - The weights are often negative and non-intuitive.
+  
+---
+
+# .center.pull[Staggered DiD in Accounting]
+
+```{r echo = FALSE, message = FALSE, warning = FALSE, fig.align = 'center'}
+tibble(
+  Journal = c("JAR", "JAE", "TAR", "RAST", "CAR", "Top 3", "Total"),
+  DiD = c(52, 63, 108, 46, 43, 223, 312),
+  Staggered = c(21, 34, 52, 24, 17, 107, 148),
+  `Staggered Percentage` = scales::percent(Staggered / DiD)
+) %>% 
+  kable(format = "html", align = 'c') %>% 
+  kable_styling("striped") %>% 
+  group_rows("Combined", start_row = 6, end_row = 7)
+
+```
+
+
+---
+
+# .center.pull[Bias with TWFE - Goodman-Bacon (2019)]
+
+- Important Insights
+
+  - $\delta^{DD}$ is just the weighted average of all the 2x2 sub-group comparison treatment effects. The weights are a function of the size of the subsample, relative size of treatment and control units, and the timing of treatment in the sub sample.
+
+  - **Already-treated units act as controls even though they are treated.**
+
+  - Given the weighting function, panel length alone can change the DiD estimates substantially, even when each $\delta^{DD}$ does not change.
+
+  - Groups treated closer to middle of panel receive higher weights than those treated earlier or later.
+
+---
+
+# .center.pull[Bias with TWFE - Goodman-Bacon (2019)]
+
+Main Decomposition:
+
+$$\underset{N \rightarrow \infty}{\text{plim }} \hat{\delta}^{DD} = \color{green}{VWATT} + \color{blue}{VWCT} -\color{red}{\Delta ATT}$$
+
+--
+$\hspace{2cm}$
+
+- $\color{green}{VWATT}$ = variance-weighted average treatment effect on the treated.
+
+--
+
+$\hspace{2cm}$
+- $\color{blue}{VWCT}$ = variance-weighted common trend. 
+
+--
+
+$\hspace{2cm}$
+- $\color{red}{\Delta ATT}$ = weighted sum of the *change* in treatment effects within each unit's post-period with respect to another unit's treatment timing.
+
+---
+# .center.pull[Simulation Exercise]
+
+- Can show how easily $\delta^{DD}$ goes awry up through a simulation exercise.
+
+--
+
+- Assume we're modeling outcome variable $y_{it}$ on balanced panel with $T = 36$ years from 1980 to 2015 with 1000 firms $i$.
+
+--
+
+- Time-invariant unit effects and time-varying year effects drawn from $\sim N \left(0, \frac{1}{2}^2\right)$.
+
+--
+
+- Firms are incorporated in of 50 randomly drawn states, and states are randomly assigned into three treatment groups $G_g \in \{1989, 1998, 2006\}$.
+
+---
+
+# .center.pull[Simulation Exercise]
+
+$\hspace{0.5cm}$
+
+**Model the treatment effect process in three ways:**
+
+--
+
+1) Only one treatment period (1998) and one treated group, with constant additive treatment effects.
+  
+--
+
+2) Allow for staggered treatment timing but with constant additive effects. Simulated treatment effects $\tau$ are all positive in expectation but decrease over time  $\left( \tau_{G1989} = 5, \tau_{G1998} = 3, \tau_{G2007} = 1 \right)$.
+
+--
+
+3) Allow for both staggered treatment timing and change-in-trend "dynamic" treatment effects. Instead of a constant $\tau$ for each group, $\tau_i$ is the yearly increase in outcome variable that compounds over time. Here $\tau_{i, G1989} = 0.5, \tau_{i, G1998} = 0.3,$ and $\tau_{i, G2007} = 0.1$.
+
+---
+# .center.pull[Simulation Exercise]
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE, fig.align = 'center', fig.width = 14, fig.height = 5.5}
+# set seed
+set.seed(2140851)
+
+# Make Data  ---------------------------------------------
+
+# Data 1 - One Treatment Period, Constant Treatment Effects --------------
+make_data1 <- function(...) {
+  
+  # Fixed Effects ------------------------------------------------
+  # unit fixed effects
+  unit <- tibble(
+    unit = 1:1000, 
+    unit_fe = rnorm(1000, 0, 0.5),
+    # generate state
+    state = sample(rep(1:50, 20), 1000, replace = FALSE),
+    # generate treatment groups
+    group = case_when(
+      state %in% 1:17 ~ 1,
+      state %in% 18:35 ~ 2,
+      state %in% 35:50 ~ 3
+    ),
+    evertreated = ifelse(group == 3, "T", "C"),
+    # avg yearly treatment effects by group
+    hat_gamma = case_when(
+      group == 3 ~ 2,
+      TRUE ~ 0
+    )) %>%
+    # generate unit specific yearly treatment effects 
+    rowwise() %>% 
+    mutate(gamma = ifelse(group == 3, rnorm(1, hat_gamma, .2), 0)) %>% 
+    ungroup()
+  
+  # year fixed effects 
+  year <- tibble(
+    year = 1980:2015,
+    year_fe = rnorm(36, 0, 0.5))
+  
+  # Trend Break -------------------------------------------------------------
+  # full interaction of unit X year 
+  crossing(unit, year) %>% 
+    # make error term and get treatment indicators and treatment effects
+    mutate(error = rnorm(nrow(.), 0, 0.5),
+           treat = ifelse(evertreated == "T" & year >= 1998, 1, 0),
+           tau = ifelse(treat == 1, gamma, 0)) %>%
+    # calculate the dep variable
+    mutate(dep_var = unit_fe + year_fe + tau + error)
+}
+
+# make data
+data1 <- make_data1()
+
+# Data 2 - Multiple Treatment Periods and Constant Treatment Effects --------------
+make_data2 <- function(...) {
+  
+  # Fixed Effects ------------------------------------------------
+  # unit fixed effects
+  unit <- tibble(
+    unit = 1:1000, 
+    unit_fe = rnorm(1000, 0, 0.5),
+    # generate state
+    state = sample(rep(1:50, 20), 1000, replace = FALSE),
+    # generate treatment groups
+    group = case_when(
+      state %in% 1:17 ~ 1989,
+      state %in% 18:35 ~ 1998,
+      state %in% 35:50 ~ 2007
+    ),
+    # avg yearly treatment effects by group
+    hat_gamma = case_when(
+      group == 1989 ~ 5,
+      group == 1998 ~ 3,
+      group == 2007 ~ 1
+    )) %>%
+    # generate unit specific yearly treatment effects 
+    rowwise() %>% 
+    mutate(gamma = rnorm(1, hat_gamma, .2), 0) %>% 
+    ungroup()
+  
+  # year fixed effects 
+  year <- tibble(
+    year = 1980:2015,
+    year_fe = rnorm(36, 0, 0.5))
+  
+  # Trend Break -------------------------------------------------------------
+  # full interaction of unit X year 
+  crossing(unit, year) %>% 
+    # make error term and get treatment indicators and treatment effects
+    mutate(error = rnorm(nrow(.), 0, 0.5),
+           treat = ifelse(year >= group, 1, 0),
+           tau = ifelse(treat == 1, gamma, 0)) %>%
+    # calculate the dep variable
+    mutate(dep_var = unit_fe + year_fe + tau + error)
+}
+
+# make data
+data2 <- make_data2()
+
+# Data 3 - Multiple Treatment Periods and Dynamic Treatment Effects --------------
+make_data3 <- function(...) {
+  
+  # Fixed Effects ------------------------------------------------
+  # unit fixed effects
+  unit <- tibble(
+    unit = 1:1000, 
+    unit_fe = rnorm(1000, 0, 0.5),
+    # generate state
+    state = sample(rep(1:50, 20), 1000, replace = FALSE),
+    # generate treatment groups
+    group = case_when(
+      state %in% 1:17 ~ 1989,
+      state %in% 18:35 ~ 1998,
+      state %in% 35:50 ~ 2007
+    ),
+    # avg yearly treatment effects by group
+    hat_gamma = case_when(
+      group == 1989 ~ .5,
+      group == 1998 ~ .3,
+      group == 2007 ~ .1
+    )) %>%
+    # generate unit specific yearly treatment effects 
+    rowwise() %>% 
+    mutate(gamma = rnorm(1, hat_gamma, .2), 0) %>% 
+    ungroup()
+  
+  # year fixed effects 
+  year <- tibble(
+    year = 1980:2015,
+    year_fe = rnorm(36, 0, 0.5))
+  
+  # Trend Break -------------------------------------------------------------
+  # full interaction of unit X year 
+  crossing(unit, year) %>% 
+    # make error term and get treatment indicators and treatment effects
+    mutate(error = rnorm(nrow(.), 0, 0.5),
+           treat = ifelse(year >= group, 1, 0),
+           tau = ifelse(treat == 1, gamma, 0)) %>%
+    # calculate the dep variable
+    group_by(unit) %>% 
+    mutate(cumtau = cumsum(tau)) %>% 
+    mutate(dep_var = unit_fe + year_fe + cumtau + error)
+}
+
+# make data
+data3 <- make_data3()
+
+# Make Plots for Outcome Paths --------------------------------------------
+plot1 <- data1 %>% 
+  ggplot(aes(x = year, y = dep_var, group = unit)) +
+  # unit specific lines
+  geom_line(alpha = 1/10, color = "grey") + 
+  # group specific averages
+  geom_line(
+    data = data1 %>% 
+      group_by(evertreated, year) %>% 
+      summarize(dep_var = mean(dep_var)),
+    aes(x = year, y = dep_var, group = factor(evertreated),
+        color = factor(evertreated)), size = 1.5) + 
+  labs(x = "", y = "Value", color = "Group") + 
+  geom_vline(xintercept = 1997.5, color = '#377EB8',
+             linetype = "dashed", size = 1) + 
+  scale_color_brewer(palette = 'Set1') +
+  ggtitle("Simulation 1") + 
+  theme(legend.position = 'bottom',
+        legend.title = element_blank(),
+        plot.title = element_text(hjust = 0.5))
+
+plot2 <- data2 %>% 
+  ggplot(aes(x = year, y = dep_var, group = unit)) +
+  # unit specific lines
+  geom_line(alpha = 1/10, color = "grey") + 
+  # group specific averages
+  geom_line(
+    data = data2 %>% 
+      group_by(group, year) %>% 
+      summarize(dep_var = mean(dep_var)),
+    aes(x = year, y = dep_var, group = factor(group),
+        color = factor(group)), size = 1.5) + 
+  labs(x = "", y = "Value", color = "Group") + 
+  geom_vline(xintercept = 1988.5, color = "#E41A1C",
+             linetype = "dashed", size = 1) + 
+  geom_vline(xintercept = 1997.5, color = "#377EB8" , 
+             linetype = "dashed", size = 1) + 
+  geom_vline(xintercept = 2006.5, color = "#4DAF4A" , 
+             linetype = "dashed", size = 1) + 
+  scale_color_brewer(palette = 'Set1') + 
+  ggtitle("Simulation 2") + 
+  theme(legend.position = 'bottom',
+        legend.title = element_blank(),
+        plot.title = element_text(hjust = 0.5))
+
+plot3 <- data3 %>% 
+  ggplot(aes(x = year, y = dep_var, group = unit)) +
+  # unit specific lines
+  geom_line(alpha = 1/10, color = "grey") + 
+  # group specific averages
+  geom_line(
+    data = data3 %>% 
+      group_by(group, year) %>% 
+      summarize(dep_var = mean(dep_var)),
+    aes(x = year, y = dep_var, group = factor(group),
+        color = factor(group)), size = 1.5) + 
+  labs(x = "", y = "Value", color = "Group") + 
+  geom_vline(xintercept = 1988.5, color = "#E41A1C",
+             linetype = "dashed", size = 1) + 
+  geom_vline(xintercept = 1997.5, color = "#377EB8" , 
+             linetype = "dashed", size = 1) + 
+  geom_vline(xintercept = 2006.5, color = "#4DAF4A" , 
+             linetype = "dashed", size = 1) + 
+  scale_color_brewer(palette = 'Set1') + 
+  scale_y_continuous(limits = c(-1, 20)) + 
+  ggtitle("Simulation 3") + 
+  theme(legend.position = 'bottom',
+        legend.title = element_blank(),
+        plot.title = element_text(hjust = 0.5))
+
+plot1 + plot2 + plot3
+```
+
+---
+# .center.pull[Simulation Exercise]
+
+$\hspace{0.5cm}$
+
+- With the simulated data we estimate TWFE DiD using MLE on:
+
+$$y_{it} = \alpha_i + \alpha_t + \delta^{DD}D_{it} + \epsilon_{it}$$
+
+$\hspace{0.5cm}$
+
+- Simple regression model with unit and time fixed effects.
+
+$\hspace{0.5cm}$
+
+- For each of the three simulated datasets we run a Monte Carlo simulation where we create the datasets 1,000 times and plot the distribution of $\widehat{\delta^{DD}}$.
+
+$\hspace{0.5cm}$
+
+- Bias is deviation from true underlying treatment effect.
+
+---
+# .center.pull[Simulation Exercise]
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE, fig.align = 'center', fig.width = 12, fig.height = 5}
+# do simulations, estatimate ATT and plot ---------------------------------
+# make function to do this by data type 
+dosims <- function(i, fun) {
+  # make data from function
+  dt <- fun()
+  # estimate model and take what you need
+  felm(dep_var ~ treat | unit + year | 0 | state, data = dt) %>% 
+    broom::tidy(conf.int = TRUE) %>% 
+    select(estimate) %>% 
+    mutate(sim = i)
+}
+
+# estimate over the three datasets 1000 sims
+simdata1 <- map_dfr(1:1000, .f = dosims, fun = make_data1)
+simdata2 <- map_dfr(1:1000, .f = dosims, fun = make_data2)
+simdata3 <- map_dfr(1:1000, .f = dosims, fun = make_data3)
+
+# make plots 
+# get the true treatment effects
+tau1 <- 2
+tau2 <- sum(c(17/50, 17/50, 16/50)*(c(5, 3, 1)))
+tau3 <- 
+  # ATT for treated group in 1985
+  (17/50) * mean(cumsum(rep(0.5, length(1989:2015)))) + 
+  # ATT for treated group in 1997
+  (17/50) * mean(cumsum(rep(0.3, length(1998:2015)))) + 
+  # ATT for treated group in 209
+  (16/50) * mean(cumsum(rep(0.1, length(2007:2015))))
+
+# make our three plots
+# from simulation 1
+plot4 <- simdata1 %>% 
+  ggplot(aes(x = estimate)) + 
+  geom_density(fill = "#377EB8", alpha = 1/5) + 
+  geom_vline(xintercept = tau1, linetype = "dashed", color = "#E41A1C", size = 1) + 
+  ggtitle("Simulation 1") +
+  labs(x = "Estimate", y = "") + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+# from simulation 2
+plot5 <- simdata2 %>% 
+  ggplot(aes(x = estimate)) + 
+  geom_density(fill = "#377EB8", alpha = 1/5) + 
+  geom_vline(xintercept = tau2, linetype = "dashed", color = "#E41A1C", size = 1) + 
+  ggtitle("Simulation 2") +
+  labs(x = "Estimate", y = "") + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+# from simulation 3
+plot6 <- simdata3 %>% 
+  ggplot(aes(x = estimate)) + 
+  geom_density(fill = "#377EB8", alpha = 1/5) + 
+  geom_vline(xintercept = tau3, linetype = "dashed", color = "#E41A1C", size = 1) + 
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black", size = 1) + 
+  ggtitle("Simulation 3") +
+  labs(x = "Estimate", y = "") + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+plot4 + plot5 + plot6
+
+```
+
+---
+# .center.pull[Goodman-Bacon Decomposition for Simulation 3]
+
+$\hspace{0.5cm}$
+
+```{r echo = FALSE, warning = FALSE, message = FALSE, fig.align = "center", fig.width = 12, fig.height = 6}
+
+# calculate the bacon decomposition without covariates
+bacon_out <- bacon(dep_var ~ treat,
+                   data = data3,
+                   id_var = "unit",
+                   time_var = "year")
+
+# plot 
+
+p <- plot_ly(bacon_out,
+             x = ~weight,
+             y = ~estimate,
+             type = 'scatter',
+             color = ~type,
+             colors = "Set1",
+             symbol = ~type, 
+             size = 2,
+             hoverinfo="text", 
+             text = ~paste0("Treated Year: ", treated, "\n Control Year: ", untreated))
+
+htmltools::save_html(p, file=here::here("Slides/L&E_Seminar", "p.html"))    
+
+```
+<iframe src="p.html" width="800" height="500" scrolling="yes" seamless="seamless" frameBorder="0"> </iframe>
+
+---
+
+# .center.pull[Remedies]
+
+---
+
+# .center.pull[Callaway & Sant'Anna]
+
+- Inverse propensity weighted long-difference in cohort-specific average treatment effects between treated and untreated units for a given treatment cohort. 
+
+$$\begin{equation} ATT(g, t) = \mathbb{E} \left[\left( \frac{G_g}{\mathbb{E}[G_g]} - \frac{\frac{p_g(X)C}{1 - p_g(X)}}{\mathbb{E}\left[\frac{p_g(X)C}{1 - p_g(X)} \right]} \right) \left(Y_t - T_{g - 1}\right)\right] \end{equation}$$
+
+- Without covariates, as in the simulated example here, it calculates the simple long difference between all treated units $i$ in relative year $k$ with all potential control units that have not yet been treated by year $k$.
+
+---
+# .center.pull[Abraham and Sun]
+  
+- A relatively straightforward extension of the standard event-study TWFE model:
+  
+  $$y_{it} = \alpha_i + \alpha_t + \sum_e \sum_{l \neq -1} \delta_{el}(1\{E_i = e\} \cdot D_{it}^l) + \epsilon_{it}$$
+  
+- You saturate the relative time indicators (i.e. t = -2, -1, ...) with indicators for the treatment initiation year group, and aggregate to overall relative time indicators weighting by cohort size.
+
+- In the case of no covariates, this gives you the same estimate as Callaway & Sant'Anna if you *fully saturate* the model with time indicators (leaving only two relative year identifiers missing).
+
+- The authors don't claim that it can be used with covariates, but it seemingly follows if we think it is okay with normal TWFE DiD. 
+
+---
+# .center.pull[Stacked Regression]
+  
+- Similar to the standard TWFE DiD, but we ensure that no previously treated units enter as controls by trimming the sample.
+
+- For each treatment cohort $G_g$, get all treated units, and all units that are not treated by year $g + k$ where $g$ is the treatment year and $k$ is the outer most relative year that you want to test (e.g. if you do an event study plot from -5 to 5, $k$ would equal 5).
+
+- Keep only observations within years $g - k$ and $g + k$ for each cohort-specific dataset, and then stack them in relative time. 
+
+- Run the same TWFE estimates as in standard DiD, but include interactions for the cohort-specific dataset with all of the fixed effects, controls, and clusters.
+
+---
+# .center.pull[Simulations - Remedies]
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE, fig.align = 'center',  fig.width = 12, fig.height = 5}
+# Callaway Sant'Anna -------------------------------------------------------------
+# create a lead/lag indicators
+data <- data3 %>% 
+  # variable with relative year from treatment
+  mutate(rel_year = year - group) %>% 
+  # drop observations after 2006 bc all treated 
+  filter(year <= 2006) %>% 
+  dplyr::arrange(group, unit, year) %>% 
+  ungroup()
+
+# first get percentage contribution to each lead/lag indicator by treatment cohort for weights
+# we will need this for the Abraham/Sun method, as well as the true treatment indicator
+# calculate weights
+weights <- data %>% 
+  mutate(rel_year = year - group) %>% 
+  # drop covariates for 2007 adopters
+  filter(group != 2007) %>% 
+  group_by(group, rel_year) %>% 
+  count %>% 
+  ungroup() %>% 
+  group_by(rel_year) %>% 
+  mutate(total = sum(n),
+         perc = n / total) %>% 
+  # keep just the variables we need
+  select(rel_year, group, perc) %>% 
+  ungroup() %>% 
+  # get rid of negative numebrs because glmt is weird
+  mutate(rel_year2 = rel_year - min(rel_year)) %>% 
+  rowwise() %>% 
+  # add variable equal to coefficient from regression
+  mutate(term = paste0("cohort_", group, "_", rel_year2)) %>% 
+  ungroup()
+
+# make a dataset with the theoretical values to merge in
+true_effect <- weights %>% 
+  # add in the multiples
+  mutate(
+    multiple = case_when(
+      rel_year < 0 ~ 0,
+      rel_year >= 0 ~ rel_year + 1),
+    # add in the tau_g values 
+    tau_g = case_when(
+      group == 1989 ~ .5,
+      group == 1998 ~ .3,
+      group == 2007 ~ .1),
+    # multiply the two 
+    effect = multiple*tau_g) %>% 
+  #collapse by  time period 
+  group_by(rel_year) %>% 
+  summarize(true_tau = weighted.mean(effect, w = perc)) %>% 
+  # make the time variable for merging
+  mutate(t = rel_year)
+
+# create a first treated variable which is 0 for the 2007 cohort
+data <- data %>% 
+  mutate(first_treat = if_else(group == 2007, 0, group))
+
+# run the CS algorithm
+CS_out <- att_gt(yname = "dep_var", 
+                 data = data,
+                 gname = "first_treat",
+                 idname = "unit", 
+                 tname = "year", 
+                 clustervars = "state",
+                 bstrap = T, 
+                 cband = T,
+                 est_method = "reg",
+                 control_group = "notyettreated",
+                 print_details = F)
+
+# get the event study estimates
+es <- aggte(CS_out, type = "dynamic")
+
+# plot
+fig4a <- tibble(
+  t = es$egt,
+  estimate = es$att.egt,
+  se = es$se.egt,
+  conf.low = estimate - 1.96*se,
+  conf.high = estimate + 1.96*se
+) %>% 
+  #keep just years -5 to 5
+  filter(t %>% between(-5, 5)) %>% 
+  left_join(true_effect) %>% 
+  # split the error bands by pre-post
+  mutate(band_groups = case_when(
+    t < -1 ~ "Pre",
+    t >= 0 ~ "Post",
+    t == -1 ~ ""
+  )) %>%
+  # plot
+  ggplot(aes(x = t, y = estimate)) + 
+  geom_line(aes(x = t, y = true_tau, color = "True Effect"), linetype = "dashed") + 
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high, group = band_groups),
+              color = "lightgrey", alpha = 1/4) + 
+  geom_pointrange(aes(ymin = conf.low, ymax = conf.high, color = "Estimated Effect"), show.legend = FALSE) + 
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = -0.5, linetype = "dashed") + 
+  scale_x_continuous(breaks = -5:5) + 
+  labs(x = "Relative Time", y = expression(hat(delta)['it'])) +
+  scale_color_brewer(palette = 'Set1') + 
+  ggtitle("Callaway & Sant'Anna") + 
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        axis.title.y = element_text(angle = 360, hjust = 0.5, vjust = 0.5))
+
+# Abraham and Sun -------------------------------------------------------------
+## Make cohort-relative time dummies
+dataAS <- data %>% 
+  # replace rel_year = NA if last treated group
+  mutate(rel_year2 = if_else(group == 2007, as.numeric(NA), rel_year),
+         rel_year2 = rel_year2 - min(rel_year2, na.rm = TRUE)) %>% 
+  # make a variable that is the interaction of group and relative year
+  rowwise() %>% 
+  mutate(cohort = if_else(group == 2007, as.character(NA), paste0(group, "_", rel_year2))) %>% 
+  ungroup() %>% 
+  dummy_cols(select_columns = "cohort", ignore_na = TRUE) %>% 
+  mutate_at(vars(starts_with("cohort_")), ~replace_na(., 0))
+
+# put the covariates into a vector form
+# get the relative time indicators we use form the weights file
+covs <- weights %>% filter(rel_year != -1 & rel_year > min(rel_year)) %>% pull(term)
+
+# estimate the saturated model
+fit <- felm(as.formula(paste("dep_var ~ ", paste(covs, collapse = "+"), "| unit + year | 0 | state")), 
+            data = dataAS, exactDOF = TRUE)
+
+# get the coefficients and make a dataset for plotting
+coefs <- fit$coefficients %>%
+  # add in coefficient name to tibble
+  as_tibble(rownames = "term") %>% 
+  # bring in weights
+  left_join(., weights)
+
+# get the relevant coefficients and weights into a string to get the linear combination
+get_lincom <- function(ll) {
+  # get just the coefficients for a specific lead lag
+  cf2 <- coefs %>% filter(rel_year == ll)
+  # paste the function that goes into the linear combination function
+  F <- paste(paste(cf2$perc, cf2$term, sep = " * ", collapse = " + "), " = 0")
+  # take linear combination and put into a data frame
+  broom::tidy(
+    confint(glht(fit, linfct = F)),
+    conf.int = TRUE
+  ) %>% mutate(rel_year = ll)
+}
+
+# run over all lead/lags
+AS_plot <- map_df(c(-5:-2, 0:5), get_lincom) %>% 
+  # add time variable
+  mutate(t = c(-5:-2, 0:5))
+
+#Plot the results
+fig4b <- AS_plot %>% 
+  select(t, estimate, conf.low, conf.high) %>% 
+  # add in data for year -1
+  bind_rows(tibble(t = -1, estimate = 0, 
+                   conf.low = 0, conf.high = 0
+  )) %>% 
+  left_join(true_effect) %>% 
+  # split the error bands by pre-post
+  mutate(band_groups = case_when(
+    t < -1 ~ "Pre",
+    t >= 0 ~ "Post",
+    t == -1 ~ ""
+  )) %>%
+  # plot
+  ggplot(aes(x = t, y = estimate)) + 
+  geom_line(aes(x = t, y = true_tau, color = "True Effect"), linetype = "dashed") + 
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high, group = band_groups),
+              color = "lightgrey", alpha = 1/4) + 
+  geom_pointrange(aes(ymin = conf.low, ymax = conf.high, color = "Estimated Effect"), show.legend = FALSE) + 
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = -0.5, linetype = "dashed") + 
+  scale_x_continuous(breaks = -5:5) + 
+  labs(x = "Relative Time", y = expression(hat(delta)['it'])) +
+  scale_color_brewer(palette = 'Set1') + 
+  ggtitle("Sun & Abraham") + 
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        axis.title.y = element_text(angle = 360, hjust = 0.5, vjust = 0.5))
+
+# CLDZ -------------------------------------------------------------
+obs <- data %>% 
+  filter(group != 2007) %>% 
+  pull(group) %>% 
+  unique()
+
+# Make the estimating equation
+covs <- c(paste0("`rel_year_", -5:-2, "`"),
+          paste0("rel_year_", 0:5))
+
+formula_cldz2 <- as.formula(paste("dep_var ~", paste(covs, collapse = " + "), 
+                                  "| factor(unit):factor(df) + factor(year):factor(df) | 0 | state_df"))
+
+# make formula to create the dataset
+getdata <- function(i) {
+  
+  #keep what we need
+  data %>% 
+    # keep treated units and all units not treated within -5 to 5
+    filter(group == i | group > i + 5) %>% 
+    # keep just year -5 to 5
+    filter(year >= i - 5 & year <= i + 5) %>%
+    # create an indicator for the dataset
+    mutate(df = i) %>% 
+    # make dummies
+    mutate(rel_year = if_else(group == i, rel_year, as.numeric(NA))) %>% 
+    dummy_cols(select_columns = "rel_year", ignore_na = TRUE) %>% 
+    mutate_at(vars(starts_with("rel_year")), ~replace_na(., 0))
+}
+
+# get data stacked
+stacked_data <- map_df(obs, getdata) %>% mutate(state_df = paste(state, df))
+
+# estimate the model on our stacked data
+fig4c <- stacked_data %>% 
+  # fit the model
+  do(broom::tidy(felm(formula_cldz2, data = ., exactDOF = TRUE, cmethod = "reghdfe"), 
+                 conf.int = TRUE, se = "cluster")) %>% 
+  # make a relative time variable
+  filter(term %in% covs) %>% 
+  mutate(t = c(-5:-2, 0:5)) %>% 
+  select(t, estimate, conf.low, conf.high) %>% 
+  # add in data for year -1
+  bind_rows(tibble(t = -1, estimate = 0, 
+                   conf.low = 0, conf.high = 0
+  )) %>% 
+  left_join(true_effect) %>% 
+  # split the error bands by pre-post
+  mutate(band_groups = case_when(
+    t < -1 ~ "Pre",
+    t >= 0 ~ "Post",
+    t == -1 ~ ""
+  )) %>%
+  # plot
+  ggplot(aes(x = t, y = estimate)) + 
+  geom_line(aes(x = t, y = true_tau, color = "True Effect"), linetype = "dashed") + 
+  geom_ribbon(aes(ymin = conf.low, ymax = conf.high, group = band_groups),
+              color = "lightgrey", alpha = 1/4) + 
+  #geom_point(aes(color = "Estimated Effect")) + 
+  geom_pointrange(aes(ymin = conf.low, ymax = conf.high, color = "Estimated Effect"), show.legend = FALSE) + 
+  geom_hline(yintercept = 0) +
+  geom_vline(xintercept = -0.5, linetype = "dashed") + 
+  scale_x_continuous(breaks = -5:5) + 
+  labs(x = "Relative Time", y = expression(hat(delta)['it'])) +
+  scale_color_brewer(palette = 'Set1') + 
+  ggtitle("Stacked Regression") + 
+  theme(legend.position = "bottom",
+        legend.title = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        axis.title.y = element_text(angle = 360, hjust = 0.5, vjust = 0.5))
+
+# save  
+fig4a + fig4b + fig4c
+
+```
+
+---
+# .center.pull[Replication]
+
+---
+# .center.pull[Big Bad Banks]
+
+- Beck, Thorsten, Ross Levine, and Alexey Levkov, 2010, "Big Bad Banks? The Winners and Losers from Bank Deregulation in the United States", *Journal of Finance* 65 (5).
+
+**Story:**
+
+- 1970s through the 1990s, most states removed restrictions on intrastate branching.
+
+--
+
+- Intensified bank competition and improved bank performance.
+
+--
+
+- Theoretically unclear what the distributional effects of bank deregulation would be.
+
+--
+
+- "Exploiting the cross‐state, cross‐time variation in the timing of branch deregulation, we find that deregulation materially tightened the distribution of income."
+
+---
+# .center.pull[Deregulatory Timing]
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE, fig.align = 'center'}
+# load data
+data <- haven::read_dta(here::here("Reps/BLL/bbb/macro_workfile.dta"))
+
+# make relative yer and log gini variables
+data <- data %>% 
+  mutate(rel_year = wrkyr - branch_reform,
+         log_gini = log(gini),
+         treat = `_intra`)
+
+# plot
+data %>% 
+  select(state, wrkyr, branch_reform) %>% 
+  mutate(state = fct_reorder(state, rank(desc(state)))) %>% 
+  mutate(post = if_else(wrkyr < branch_reform, "Pre", "Post")) %>% 
+  mutate(post = factor(post, levels = c("Pre", "Post"))) %>% 
+  ggplot(aes(x = wrkyr, y = state)) + 
+  geom_tile(aes(fill = as.factor(post))) + 
+  scale_fill_brewer(palette = 'Set1', direction = -1) + 
+  theme(legend.position = 'bottom',
+        legend.title = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.title = element_blank(),
+        legend.background = element_rect(color = "white")) 
+
+```
+
+
+---
+# .center.pull[Baseline Model]
+
+$$\text{Log(Gini)} = \alpha_i + \alpha_t + \delta D_{it} + \epsilon_{it}$$
+
+where Log(Gini) is the natural log of the state level Gini coefficient from CPS, $\alpha_i$ and $\alpha_t$ are state and year fixed effects, and $D_{it}$ is an indicator variable for years after deregulation.
+
+$\hspace{2cm}$
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE, fig.align = 'center'}
+# function to get significance stars
+make_stars <- function(t, dof) {
+  if (2 * pt(-t, df=dof) < 0.01) {
+    ptstar <- "***"
+  } else if (2 * pt(-t, df=dof) < 0.05) {
+    ptstar <- "**"
+  } else if (2 * pt(-t, df=dof) < 0.1) {
+    ptstar <- "*"
+  } else {
+    ptstar <- ""
+  }
+  return(ptstar)
+}
+
+# estimate the model
+mod <- felm(log_gini ~ treat | statefip + wrkyr | 0 | statefip, data = data)
+
+# make table
+bind_rows(
+  # get the standard error and estimates into a table
+  broom::tidy(mod, se = "cluster") %>%
+    mutate(variable = "Bank deregulation") %>% 
+    select(variable, estimate, std.error) %>%
+    mutate(t = estimate/std.error,
+           estimate = as.character(format(round(estimate, 3), nsmall = 3)),
+           std.error = paste0("(", as.character(format(round(std.error, 3), nsmall = 3)), ")", 
+                              make_stars(abs(t), 1500))) %>% 
+    select(-t) %>% 
+    pivot_longer(cols = c(estimate, std.error),
+                 names_to = "name",
+                 values_to = "Log Gini"),
+  # add in adjusted r2 and the number of observations
+  tibble(
+    variable = c('Adjusted R-Squared', "Observations"),
+    name = rep("estimate", 2),
+    "Log Gini" = c(as.character(format(round(broom::glance(mod)$adj.r.squared, 2), nsmall = 2)), 
+                   as.character(format(round(broom::glance(mod)$nobs, 0), nsmall = 0)))
+  )
+) %>% 
+  # drop name and make table
+  mutate(variable = if_else(name == "estimate", variable, NA_character_)) %>% 
+  select(-name) %>% 
+  kable("html", escape = F, align = 'lc',
+        booktabs = T,
+        col.names = c(" ", "Log Gini"),
+        label = "table3", 
+        caption = "The Impact of Deregulation on Income Inequality") %>% 
+  kable_styling() %>% 
+  add_header_above(c("Panel A: No Controls" = 2))
+
+```
+
+---
+# .center.pull[Goodman-Bacon Decomposition]
+
+$\hspace{2cm}$
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE, fig.align = 'center'}
+# calculate the bacon decomposition without covariates
+bacon_out <- bacon(log_gini ~ treat,
+                   data = data,
+                   id_var = "state",
+                   time_var = "wrkyr")
+
+# first get the total weight for each group. 
+total_weights <- bacon_out %>% 
+  group_by(type) %>% 
+  summarize(weight = sum(weight))
+
+# get the weighted average within group
+group_avg <- bacon_out %>% 
+  group_by(type) %>% 
+  summarize(avg = weighted.mean(estimate, weight),
+            weights = sum(weight))
+
+group_avg %>% 
+  kable("html", digits = 3, align = 'lcc',
+        booktabs = T,
+        col.names = c("Type", "Weighted \n Average", "Total \n Weight"),
+        label = "table4",
+        caption = "Goodman-Bacon Decomposition of Table II Results") %>% 
+  kable_styling()
+
+```
+
+---
+# .center.pull[Goodman-Bacon Decomposition]
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE, fig.align = 'center', fig.width = 12, fig.height = 5}
+
+# first early v late plot
+p1 <- bacon_out %>% 
+  filter(type == "Earlier vs Later Treated") %>% 
+  ggplot(aes(x = weight, y = estimate)) + 
+  geom_point(size = 3, alpha = 1/2) + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_hline(yintercept = group_avg$avg[1], color = "darkred", size = 2) + 
+  labs(x = "Weight", y = expression(hat(delta)^'DD')) + 
+  ggtitle(paste0("Early vs Later Treated \n Total Weight =", scales::percent(total_weights$weight[1]))) + 
+  scale_y_continuous(limits = c(-.12, 0.12)) + 
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.position = "bottom",
+        legend.title = element_blank(),
+        axis.title.y = element_text(angle = 360, hjust = 0.5, vjust = 0.5))
+
+p2 <- bacon_out %>% 
+  filter(type == "Later vs Earlier Treated") %>% 
+  ggplot(aes(x = weight, y = estimate)) + 
+  geom_point(size = 3, alpha = 1/2) + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_hline(yintercept = group_avg$avg[2], color = "darkred", size = 2) + 
+  labs(x = "Weight", y = expression(hat(delta)^'DD')) + 
+  scale_y_continuous(limits = c(-.12, 0.12)) + 
+  ggtitle(paste0("Later vs Earlier Treated \n Total Weight = ", scales::percent(total_weights$weight[2]))) + 
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.position = "bottom",
+        legend.title = element_blank(),
+        axis.title.y = element_text(angle = 360, hjust = 0.5, vjust = 0.5))
+
+# combine the figures
+p1 + p2 
+
+```
+
+---
+# .center.pull[Event Study Specification]
+
+$$\text{log(Gini)}_{it} = \alpha_i + \alpha_t + \beta_1 D_{it}^{-\overline{10}} + \beta_2 D_{it}^{-9} \ldots \beta_{25}D_{it}^{+\overline{15}} + \epsilon_{st}$$
+```{r, echo = FALSE, message = FALSE, warning = FALSE, fig.align = 'center', fig.width = 10, fig.height = 5}
+# make the formula to estimate
+covs <- c(paste0("`", "rel_year_", c(-10:-1, 1:15), "`"))
+form <- as.formula(paste0("log_gini ~", paste0(covs, collapse = " + "),
+                          "| wrkyr + statefip | 0 | statefip"))
+
+# make dummy variables 
+data_dummies <- data %>% 
+  dummy_cols(select_columns = "rel_year", remove_selected_columns = FALSE,
+             ignore_na = TRUE) %>% 
+  mutate(across(starts_with("rel_year_"), ~replace_na(., 0))) %>% 
+  mutate(`rel_year_-10` = if_else(rel_year <= -10, 1, 0),
+         rel_year_15 = if_else(rel_year >= 15, 1, 0))
+
+broom::tidy(felm(form, data = data_dummies, exactDOF = TRUE, cmethod = "reghdfe"),
+            conf.int = TRUE, se = 'cluster') %>%
+  # add in the relative time variable
+  mutate(t = c(-10:-1, 1:15)) %>% 
+  # substract out the the mean for beta -10 to -1
+  mutate(conf.low = conf.low - mean(estimate[t < 0]),
+         conf.high = conf.high - mean(estimate[t < 0]),
+         estimate = estimate - mean(estimate[t < 0])) %>% 
+  select(t, estimate, conf.low, conf.high) %>% 
+  # make two different periods for the connection
+  mutate(group = case_when(
+    t < 0 ~ 1,
+    t > 0 ~ 2,
+    TRUE ~ NA_real_
+  )) %>% 
+  # plot
+  ggplot(aes(x = t, y = estimate, group = group)) + 
+  geom_point(fill = "white", shape = 21) + geom_line() + 
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), 
+                linetype = "longdash") + 
+  geom_hline(yintercept = 0,  linetype = "longdash", color = "gray") + 
+  geom_vline(xintercept = 0,  linetype = "longdash", color = "gray") + 
+  labs(y = "Percent \n Change", x = "Years Relative to Deregulation") + 
+  scale_x_continuous(breaks = seq(-10, 15, by = 5)) + 
+  scale_y_continuous(breaks = seq(-0.06, 0.04, by = 0.02)) + 
+  theme(axis.title.y = element_text(hjust = 0.5, vjust = 0.5, angle = 360))
+
+```
+
+---
+# .center.pull[Modified Event Study Specification]
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE, error = FALSE, fig.align = 'center', fig.width = 10, fig.height = 6}
+figa <- broom::tidy(felm(form, data = data_dummies, exactDOF = TRUE, cmethod = "reghdfe"),
+            conf.int = TRUE, se = 'cluster') %>%
+  # add in the relative time variable
+  mutate(t = c(-10:-1, 1:15)) %>% 
+  # substract out the the mean for beta -10 to -1
+  mutate(conf.low = conf.low - mean(estimate[t < 0]),
+         conf.high = conf.high - mean(estimate[t < 0]),
+         estimate = estimate - mean(estimate[t < 0])) %>% 
+  select(t, estimate, conf.low, conf.high) %>% 
+  # make two different periods for the connection
+  mutate(group = case_when(
+    t < 0 ~ 1,
+    t > 0 ~ 2,
+    TRUE ~ NA_real_
+  )) %>% 
+  # plot
+  ggplot(aes(x = t, y = estimate, group = group)) + 
+  geom_point(fill = "white", shape = 21) + geom_line() + 
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), 
+                linetype = "longdash") + 
+  geom_hline(yintercept = 0,  linetype = "longdash", color = "gray") + 
+  geom_vline(xintercept = 0,  linetype = "longdash", color = "gray") + 
+  labs(y = "Percent \n Change", x = "Years Relative to Deregulation") + 
+  ggtitle("(A)") + 
+  scale_x_continuous(breaks = seq(-10, 15, by = 5)) + 
+  scale_y_continuous(breaks = seq(-0.06, 0.04, by = 0.02)) + 
+    theme(axis.title.y = element_text(hjust = 0.5, vjust = 0.5, angle = 360),
+        plot.title = element_text(hjust = 0.5))
+
+# panel B - don't detrend
+figb <- broom::tidy(felm(form, data = data_dummies, exactDOF = TRUE, cmethod = "reghdfe"),
+            conf.int = TRUE, se = 'cluster') %>%
+  # add in the relative time variable
+  mutate(t = c(-10:-1, 1:15)) %>% 
+  select(t, estimate, conf.low, conf.high) %>% 
+  # make two different periods for the connection
+  mutate(group = case_when(
+    t < 0 ~ 1,
+    t > 0 ~ 2,
+    TRUE ~ NA_real_
+  )) %>% 
+  # plot
+  ggplot(aes(x = t, y = estimate, group = group)) + 
+  geom_point(fill = "white", shape = 21) + geom_line() + 
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), 
+                linetype = "longdash") + 
+  geom_hline(yintercept = 0,  linetype = "longdash", color = "gray") + 
+  geom_vline(xintercept = 0,  linetype = "longdash", color = "gray") + 
+  labs(y = "Percent \n Change", x = "Years Relative to Deregulation") + 
+  ggtitle("(B)") + 
+  scale_x_continuous(breaks = seq(-10, 15, by = 5)) + 
+  scale_y_continuous(breaks = seq(-0.06, 0.04, by = 0.02)) + 
+  theme(axis.title.y = element_text(hjust = 0.5, vjust = 0.5, angle = 360),
+        plot.title = element_text(hjust = 0.5))
+
+# panel C - don't detrend and also include the full set of relative time indicators
+# make dummy variables 
+data_dummies <- data %>% 
+  dummy_cols(select_columns = "rel_year", remove_selected_columns = FALSE,
+             ignore_na = TRUE) %>% 
+  mutate(across(starts_with("rel_year_"), ~replace_na(., 0)))
+
+# get the relative year indicators 
+yrs <- sort(unique(data_dummies$rel_year))
+yrs <- yrs[which(yrs != min(yrs) & yrs != 0)]
+
+# make formula
+covs <- c(paste0("`", "rel_year_", yrs, "`"))
+form <- as.formula(paste0("log_gini ~", paste0(covs, collapse = " + "),
+                          "| wrkyr + statefip | 0 | statefip"))
+
+# estimate the model and plot
+# estimate the model
+figc <- broom::tidy(felm(form, data = data_dummies, exactDOF = TRUE, cmethod = "reghdfe"),
+            conf.int = TRUE, se = "cluster") %>%
+  # add in the relative time variable
+  mutate(t = yrs) %>% 
+  filter(t %>% between(-10, 15)) %>% 
+  select(t, estimate, conf.low, conf.high) %>% 
+  # make two different periods for the connection
+  mutate(group = case_when(
+    t < 0 ~ 1,
+    t > 0 ~ 2,
+    TRUE ~ NA_real_
+  )) %>% 
+  # plot
+  ggplot(aes(x = t, y = estimate, group = group)) + 
+  geom_point(fill = "white", shape = 21) + geom_line() + 
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), 
+                linetype = "longdash") + 
+  geom_hline(yintercept = 0,  linetype = "longdash", color = "gray") + 
+  geom_vline(xintercept = 0,  linetype = "longdash", color = "gray") + 
+  labs(y = "Percent \n Change", x = "Years Relative to Deregulation") + 
+  ggtitle("(C)") + 
+  scale_x_continuous(breaks = seq(-10, 15, by = 5)) + 
+  scale_y_continuous(breaks = seq(-0.06, 0.06, by = 0.02)) + 
+  theme(axis.title.y = element_text(hjust = 0.5, vjust = 0.5, angle = 360),
+        plot.title = element_text(hjust = 0.5))
+
+# fig D - drop firms treated before the panel and all years once everyone is treated.
+# make dummy variables 
+data_dummies <- data %>% 
+  # drop states treated before the sample
+  filter(branch_reform >= 1977) %>% 
+  # drop observations after which everyone is treated
+  filter(wrkyr <= 1998) %>% 
+  # remove dummy variables for firms treated in the last year
+  mutate(rel_year = if_else(branch_reform == max(branch_reform), NA_real_, rel_year)) %>% 
+  dummy_cols(select_columns = "rel_year", remove_selected_columns = FALSE,
+             ignore_na = TRUE) %>% 
+  mutate(across(starts_with("rel_year_"), ~replace_na(., 0)))
+
+# get the relative year indicators 
+yrs <- sort(unique(data_dummies$rel_year))
+yrs <- yrs[which(yrs != min(yrs) & yrs != 0)]
+
+# make formula
+covs <- c(paste0("`", "rel_year_", yrs, "`"))
+form <- as.formula(paste0("log_gini ~", paste0(covs, collapse = " + "),
+                          "| wrkyr + statefip | 0 | statefip"))
+
+# estimate the model and plot
+# estimate the model
+figd <- broom::tidy(felm(form, data = data_dummies, exactDOF = TRUE, cmethod = "reghdfe"),
+            conf.int = TRUE, se = "cluster") %>%
+  # add in the relative time variable
+  mutate(t = yrs) %>% 
+  filter(t %>% between(-10, 15)) %>% 
+  select(t, estimate, conf.low, conf.high) %>% 
+  # make two different periods for the connection
+  mutate(group = case_when(
+    t < 0 ~ 1,
+    t > 0 ~ 2,
+    TRUE ~ NA_real_
+  )) %>% 
+  # plot
+  ggplot(aes(x = t, y = estimate, group = group)) + 
+  geom_point(fill = "white", shape = 21) + geom_line() + 
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), 
+                linetype = "longdash") + 
+  geom_hline(yintercept = 0,  linetype = "longdash", color = "gray") + 
+  geom_vline(xintercept = 0,  linetype = "longdash", color = "gray") + 
+  labs(y = "Percent \n Change", x = "Years Relative to Deregulation") + 
+  ggtitle("(D)") + 
+  scale_x_continuous(breaks = seq(-10, 15, by = 5)) + 
+  scale_y_continuous(breaks = seq(-0.06, 0.06, by = 0.02)) + 
+  theme(axis.title.y = element_text(hjust = 0.5, vjust = 0.5, angle = 360),
+        plot.title = element_text(hjust = 0.5))
+
+figa + figb + figc + figd + plot_layout(nrow = 2)
+```
+
+---
+# .center.pull[Remedies]
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE, fig.align = 'center', fig.width = 12, fig.height = 5}
+### STACKED REGRESSION
+# get treated years that we can estimate
+treats <- data %>% 
+  filter(branch_reform >= 1977 & branch_reform < max(branch_reform)) %>% 
+  pull(branch_reform) %>% 
+  unique() %>% 
+  sort()
+
+# function to get treat-year specific cohorts
+make_dt <- function(tyr) {
+  data %>% 
+    # keep firms in the adopt year or those firms in years t + 5
+    filter(branch_reform == tyr | wrkyr < branch_reform) %>% 
+    # keep just years t - 3 to t + 5
+    filter(wrkyr %>% between(tyr - 5, tyr + 10)) %>% 
+    # replace adopt year to NA to make dummies
+    mutate(branch_reform = if_else(branch_reform == tyr, branch_reform, NA_real_),
+           rel_year = wrkyr - branch_reform) %>% 
+    select(statefip, wrkyr, branch_reform, rel_year, log_gini) %>% 
+    mutate(dt = as.character(tyr))
+}
+
+stacked_data <- map_dfr(treats, make_dt) %>% 
+  dummy_cols(select_columns = "rel_year", remove_selected_columns = FALSE,
+             ignore_na = TRUE) %>% 
+  mutate(across(starts_with("rel_year_"), ~replace_na(., 0))) %>% 
+  mutate(cluster = paste0(statefip, "_", dt))
+
+# make formula
+covs <- c(paste0("`", "rel_year_", c(-5:-1, 1:10), "`"))
+form <- as.formula(paste0("log_gini ~", paste0(covs, collapse = " + "),
+                          "| as.factor(wrkyr):as.factor(dt) + as.factor(statefip):as.factor(dt) | 0 | cluster"))
+
+# estimate the model and plot
+# estimate the model
+figa <- broom::tidy(felm(form, data = stacked_data, exactDOF = TRUE, cmethod = "reghdfe"),
+                     conf.int = TRUE, se = "cluster") %>%
+  # add in the relative time variable
+  mutate(t = c(-5:-1, 1:10)) %>% 
+  filter(t %>% between(-5, 10)) %>% 
+  select(t, estimate, conf.low, conf.high) %>% 
+  # make two different periods for the connection
+  mutate(group = case_when(
+    t < 0 ~ 1,
+    t > 0 ~ 2,
+    TRUE ~ NA_real_
+  )) %>% 
+  #plot
+  ggplot(aes(x = t, y = estimate, group = group)) + 
+  geom_point(fill = "white", shape = 21) + geom_line() + 
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), 
+                linetype = "longdash") + 
+  geom_hline(yintercept = 0,  linetype = "longdash", color = "gray") + 
+  geom_vline(xintercept = 0,  linetype = "longdash", color = "gray") + 
+  labs(y = "Percent \n Change", x = "Years Relative to Deregulation") + 
+  ggtitle("Stacked Regression") + 
+  scale_x_continuous(breaks = seq(-10, 15, by = 5)) + 
+  scale_y_continuous(breaks = seq(-0.06, 0.06, by = 0.02)) + 
+  theme(axis.title.y = element_text(hjust = 0.5, vjust = 0.5, angle = 360),
+        plot.title = element_text(hjust = 0.5))
+
+# CS Method ---------------------------------------------------------------
+## estimate with notyettreated 
+# make the dataset - drop states treated before 1977
+data_cs <- data %>% 
+  # drop states treated before data
+  filter(branch_reform >= 1977) %>% 
+  # keep only observations through 1998
+  filter(wrkyr <= 1998) %>% 
+  select(statefip, wrkyr, branch_reform, log_gini)
+
+# run
+out <- att_gt(yname = "log_gini",
+               data = data_cs,
+               tname = "wrkyr",
+               idname = "statefip",
+               gname = "branch_reform",
+               xformla = NULL,
+               control_group = "notyettreated",
+               est_method = "reg",
+               print_details = FALSE,
+               bstrap = T,
+               cband = T,
+               clustervars = "statefip")
+
+# make the dynamic event study
+es <- aggte(out, type="dynamic")
+
+# plot
+figb <- tibble(
+  t = es$egt,
+  estimate = es$att.egt,
+  se = es$se.egt,
+  conf.low = estimate - 1.96*se,
+  conf.high = estimate + 1.96*se
+) %>% 
+  filter(t %>% between(-5, 10)) %>% 
+  #plot
+  ggplot(aes(x = t, y = estimate)) + 
+  geom_point(fill = "white", shape = 21) + geom_line() + 
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), 
+                linetype = "longdash") + 
+  geom_hline(yintercept = 0,  linetype = "longdash", color = "gray") + 
+  geom_vline(xintercept = 0,  linetype = "longdash", color = "gray") + 
+  labs(y = "Percent \n Change", x = "Years Relative to Deregulation") + 
+  ggtitle("Callaway & Sant'Anna") + 
+  scale_x_continuous(breaks = seq(-10, 15, by = 5)) + 
+  scale_y_continuous(breaks = seq(-0.06, 0.06, by = 0.02)) + 
+  theme(axis.title.y = element_text(hjust = 0.5, vjust = 0.5, angle = 360),
+        plot.title = element_text(hjust = 0.5))
+
+figa + figb
+
+```
+
+---
+# .center.pull[Conclusion]
+
+$\hspace{2cm}$
+
+- A well-known and very commonly used shock that has reasonable treatment timing dispersion. 
+
+$\hspace{2cm}$
+--
+
+- Decomposition from Goodman-Bacon shows the result is driven by problematic comparisons.
+
+$\hspace{2cm}$
+--
+
+- Once correcting for staggering and treatment effect heterogeneity - no effect. 
